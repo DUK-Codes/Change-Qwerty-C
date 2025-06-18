@@ -57,7 +57,7 @@
 
 ## Обратная связь
 
-Буду рад вашим вопросам и предложениям! Пишите мне в Telegram t.me/DUK_Creativity
+Буду рад вашим вопросам и предложениям! Пишите мне в Telegram [t.me/DUK_Creativity](https://t.me/DUK_Creativity)
 
 ---
 **ChangeQwerty** — забудьте о случайно набранном "ghbdtn" вместо "привет"!  
