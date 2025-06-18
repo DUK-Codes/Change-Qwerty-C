@@ -1,7 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
 #include <wchar.h>
-#include <locale.h>
 #include <shellapi.h>
 #include <shlobj.h>
 
@@ -10,6 +9,7 @@
 #define IDM_ABOUT 100
 #define IDM_AUTORUN 102
 #define IDM_EXIT 101
+#define IDM_OPEN_REPO 103  // Новый идентификатор
 
 // Маппинг QWERTY -> ЙЦУКЕН
 wchar_t qwerty_to_cyrillic(wchar_t c) {
@@ -26,6 +26,7 @@ wchar_t qwerty_to_cyrillic(wchar_t c) {
         case L'b': return L'и'; case L'n': return L'т'; case L'm': return L'ь';
         case L',': return L'б'; case L'.': return L'ю'; case L'/': return L'.';
         case L'`': return L'ё';
+
         case L'Q': return L'Й'; case L'W': return L'Ц'; case L'E': return L'У';
         case L'R': return L'К'; case L'T': return L'Е'; case L'Y': return L'Н';
         case L'U': return L'Г'; case L'I': return L'Ш'; case L'O': return L'Щ';
@@ -38,6 +39,8 @@ wchar_t qwerty_to_cyrillic(wchar_t c) {
         case L'B': return L'И'; case L'N': return L'Т'; case L'M': return L'Ь';
         case L'<': return L'Б'; case L'>': return L'Ю'; case L'?': return L',';
         case L'~': return L'Ё';
+        case L'@': return L'"'; case L'#': return L'№'; case L'$': return L';';
+        case L'^': return L':'; case L'&': return L'?';
         default: return c;
     }
 }
@@ -155,7 +158,6 @@ void wait_for_key_release(UINT vk1, UINT vk2) {
         SHORT state1 = GetAsyncKeyState(vk1);
         SHORT state2 = GetAsyncKeyState(vk2);
         
-        // Проверяем старший бит (флаг нажатия)
         if (!(state1 & 0x8000) && !(state2 & 0x8000)) {
             break;
         }
@@ -167,20 +169,16 @@ void wait_for_key_release(UINT vk1, UINT vk2) {
 void send_copy_command() {
     INPUT inputs[4] = {0};
     
-    // Ctrl down
     inputs[0].type = INPUT_KEYBOARD;
     inputs[0].ki.wVk = VK_CONTROL;
     
-    // C down
     inputs[1].type = INPUT_KEYBOARD;
     inputs[1].ki.wVk = 'C';
     
-    // C up
     inputs[2].type = INPUT_KEYBOARD;
     inputs[2].ki.wVk = 'C';
     inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
     
-    // Ctrl up
     inputs[3].type = INPUT_KEYBOARD;
     inputs[3].ki.wVk = VK_CONTROL;
     inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
@@ -192,20 +190,16 @@ void send_copy_command() {
 void send_paste_command() {
     INPUT inputs[4] = {0};
     
-    // Ctrl down
     inputs[0].type = INPUT_KEYBOARD;
     inputs[0].ki.wVk = VK_CONTROL;
     
-    // V down
     inputs[1].type = INPUT_KEYBOARD;
     inputs[1].ki.wVk = 'V';
     
-    // V up
     inputs[2].type = INPUT_KEYBOARD;
     inputs[2].ki.wVk = 'V';
     inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
     
-    // Ctrl up
     inputs[3].type = INPUT_KEYBOARD;
     inputs[3].ki.wVk = VK_CONTROL;
     inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
@@ -215,25 +209,20 @@ void send_paste_command() {
 
 // Получить выделенный текст
 wchar_t* get_selected_text() {
-    // Сохраняем текущий буфер обмена
     wchar_t* old_clipboard = NULL;
     int had_clipboard = get_clipboard(&old_clipboard);
     
-    // Очищаем буфер обмена
     if (OpenClipboard(NULL)) {
         EmptyClipboard();
         CloseClipboard();
     }
     
-    // Копируем выделенный текст
     send_copy_command();
-    Sleep(100); // Даем время на копирование
+    Sleep(100);
     
-    // Получаем новый текст из буфера
     wchar_t* selected_text = NULL;
     get_clipboard(&selected_text);
     
-    // Восстанавливаем старый буфер обмена
     if (had_clipboard && old_clipboard) {
         set_clipboard(old_clipboard);
     } else if (OpenClipboard(NULL)) {
@@ -247,10 +236,8 @@ wchar_t* get_selected_text() {
 
 // Обработчик горячей клавиши
 void process_hotkey() {
-    // Ждем отпускания Alt и F12
     wait_for_key_release(VK_MENU, VK_F12);
     
-    // Получаем выделенный текст
     wchar_t* clipboard_text = get_selected_text();
     if (!clipboard_text || !*clipboard_text) {
         if (clipboard_text) free(clipboard_text);
@@ -258,28 +245,25 @@ void process_hotkey() {
     }
 
     int layout = detect_layout(clipboard_text);
-    wchar_t* converted = (wchar_t*)malloc((wcslen(clipboard_text) + 1) * sizeof(wchar_t));
-    
-    if (converted) {
-        switch (layout) {
-            case 1: // QWERTY -> Cyrillic
-                switch_layout(clipboard_text, converted, 1);
-                break;
-            case 0: // Cyrillic -> QWERTY
-                switch_layout(clipboard_text, converted, 0);
-                break;
-            default: // Неопределенная раскладка
-                free(clipboard_text);
-                free(converted);
-                return;
-        }
-        
-        if (set_clipboard(converted)) {
-            Sleep(50); // Даем время на обновление буфера
-            send_paste_command();
-        }
-        free(converted);
+    if (layout == -1) {
+        free(clipboard_text);
+        return;
     }
+
+    size_t len = wcslen(clipboard_text) + 1;
+    wchar_t* converted = (wchar_t*)malloc(len * sizeof(wchar_t));
+    if (!converted) {
+        free(clipboard_text);
+        return;
+    }
+
+    switch_layout(clipboard_text, converted, layout);
+    if (set_clipboard(converted)) {
+        Sleep(50);
+        send_paste_command();
+    }
+    
+    free(converted);
     free(clipboard_text);
 }
 
@@ -296,13 +280,7 @@ int is_autorun_enabled() {
 
     wchar_t appPath[MAX_PATH];
     DWORD bufSize = sizeof(appPath);
-    LSTATUS status = RegGetValueW(hKey, 
-                                NULL, 
-                                L"LayoutSwitcher", 
-                                RRF_RT_REG_SZ, 
-                                NULL, 
-                                appPath, 
-                                &bufSize);
+    LSTATUS status = RegGetValueW(hKey, NULL, L"ChangeQwerty", RRF_RT_REG_SZ, NULL, appPath, &bufSize);
     
     RegCloseKey(hKey);
     return (status == ERROR_SUCCESS);
@@ -322,14 +300,9 @@ void set_autorun(int enable) {
     if (enable) {
         wchar_t appPath[MAX_PATH];
         GetModuleFileNameW(NULL, appPath, MAX_PATH);
-        RegSetValueExW(hKey, 
-                      L"LayoutSwitcher", 
-                      0, 
-                      REG_SZ, 
-                      (BYTE*)appPath, 
-                      (wcslen(appPath) + 1) * sizeof(wchar_t));
+        RegSetValueExW(hKey, L"ChangeQwerty", 0, REG_SZ, (BYTE*)appPath, (wcslen(appPath) + 1) * sizeof(wchar_t));
     } else {
-        RegDeleteValueW(hKey, L"LayoutSwitcher");
+        RegDeleteValueW(hKey, L"ChangeQwerty");
     }
 
     RegCloseKey(hKey);
@@ -344,15 +317,12 @@ void AddTrayIcon(HWND hwnd) {
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAYICON;
     
-    // Загрузка иконки из ресурсов
     nid.hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(1));
-    
-    // Если иконка не загружена, используем стандартную
-    if (nid.hIcon == NULL) {
+    if (!nid.hIcon) {
         nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
     }
     
-    wcscpy_s(nid.szTip, sizeof(nid.szTip)/sizeof(WCHAR), L"Раскладка текста");
+    wcscpy_s(nid.szTip, sizeof(nid.szTip)/sizeof(WCHAR), L"Change Qwerty");
     Shell_NotifyIcon(NIM_ADD, &nid);
 }
 
@@ -371,7 +341,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_CREATE:
             AddTrayIcon(hwnd);
             if (!RegisterHotKey(hwnd, 1, MOD_ALT, VK_F12)) {
-                // Ошибка регистрации горячей клавиши
+                MessageBox(NULL, L"Не удалось зарегистрировать горячую клавишу", L"Ошибка", MB_ICONERROR);
             }
             break;
             
@@ -383,13 +353,13 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 HMENU hMenu = CreatePopupMenu();
                 AppendMenuW(hMenu, MF_STRING, IDM_ABOUT, L"О программе");
                 
-                // Пункт автозагрузки с галочкой
                 if (is_autorun_enabled()) {
                     AppendMenuW(hMenu, MF_STRING | MF_CHECKED, IDM_AUTORUN, L"Автозагрузка");
                 } else {
                     AppendMenuW(hMenu, MF_STRING, IDM_AUTORUN, L"Автозагрузка");
                 }
                 
+                AppendMenuW(hMenu, MF_STRING, IDM_OPEN_REPO, L"Открыть репозиторий");  // Новый пункт меню
                 AppendMenuW(hMenu, MF_STRING, IDM_EXIT, L"Закрыть");
                 
                 SetForegroundWindow(hwnd);
@@ -402,18 +372,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             switch (LOWORD(wParam)) {
                 case IDM_ABOUT:
                     MessageBoxW(hwnd, 
-                        L"Переключатель раскладки\n\n"
-                        L"Alt+F12 - автоматическое переключение раскладки выделенного текста\n\n"
-                        L"Автоматически определяет раскладку и преобразует текст",
+                        L"Переключатель раскладки выделенного текста\n\n"
+                        L"Выделите нужный фрагмент текста - затем нажмите Alt+F12\n\n"
+                        L"Репозиторий: github.com/DUK-Codes/Change-Qwerty-C",
                         L"О программе", MB_OK | MB_ICONINFORMATION);
                     break;
                     
                 case IDM_AUTORUN:
-                    if (is_autorun_enabled()) {
-                        set_autorun(0);
-                    } else {
-                        set_autorun(1);
-                    }
+                    set_autorun(!is_autorun_enabled());
+                    break;
+                    
+                case IDM_OPEN_REPO:  // Обработка нового пункта меню
+                    ShellExecuteW(NULL, L"open", L"https://github.com/DUK-Codes/Change-Qwerty-C", NULL, NULL, SW_SHOWNORMAL);
                     break;
                     
                 case IDM_EXIT:
@@ -442,10 +412,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 // Точка входа
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    setlocale(LC_ALL, "");
-    
-    // Регистрация класса окна
-    const wchar_t CLASS_NAME[] = L"LayoutSwitcherClass";
+    const wchar_t CLASS_NAME[] = L"ChangeQwertyClass";
     
     WNDCLASS wc = {0};
     wc.lpfnWndProc = WndProc;
@@ -457,12 +424,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 1;
     }
     
-    // Создание невидимого окна
     HWND hwnd = CreateWindowEx(
-        0,
-        CLASS_NAME,
-        L"Переключатель раскладки",
-        WS_OVERLAPPEDWINDOW,
+        0, CLASS_NAME, L"ChangeQwerty", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
         NULL, NULL, hInstance, NULL);
     
@@ -471,12 +434,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 1;
     }
     
-    // Основной цикл сообщений
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
     
-    return (int) msg.wParam;
+    return (int)msg.wParam;
 }
