@@ -20,7 +20,7 @@
 
 ## Установка
 
-1. Скачайте [последнюю сборку](https://github.com/DUK-Codes/Change-Qwerty-C/releases/download/Release_Change_Qwerty/Change_Qwerty-V5.2.exe)
+1. Скачайте [последнюю сборку](https://github.com/DUK-Codes/Change-Qwerty-C/releases/download/Change_Qwerty_5.2/Change_Qwerty-V5.2.exe)
 2. Положите в удобное вам место
 3. Запустите
 
